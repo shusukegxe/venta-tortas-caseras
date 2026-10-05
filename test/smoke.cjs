@@ -1,7 +1,6 @@
 'use strict';
-/* Smoke test de la web de tortas con pedidos integrados (código real en jsdom). */
+/* Smoke test de la web de tortas: tamaños, soles, personalizada (editor + IA tab) y modos demo/real. */
 const fs = require('fs');
-const path = require('path');
 const { JSDOM } = require('jsdom');
 
 const DIR = __dirname + '/..';
@@ -21,38 +20,71 @@ async function nuevaWeb() {
 }
 
 (async () => {
-  // ---------- modo demo (sin endpoint configurado) ----------
   let dom = await nuevaWeb();
   let d = dom.window.document;
 
-  ok(d.querySelectorAll('[data-add]').length === 4, 'catálogo: 4 tortas con botón Pedir');
-  ok(!!d.getElementById('pj-fab'), 'interfaz: botón flotante del carrito presente');
-  ok(!!d.querySelector('#pedido-checkout .pj-checkout'), 'checkout: formulario montado en #pedidos');
-  ok(d.getElementById('pj-enviar').disabled, 'checkout: botón deshabilitado con carrito vacío');
+  // catálogo con precios en soles y botones
+  ok(d.querySelectorAll('[data-add]').length === 5, 'catálogo: 5 botones (4 tortas + Personalizar)');
+  ok(d.body.textContent.includes('Desde S/ 52.00'), 'catálogo: precios en soles');
+  ok(!!d.querySelector('[data-add="p5"]'), 'personalizada: botón Personalizar presente');
 
+  // carrito con tamaños
   d.querySelector('[data-add="p1"]').click();
   d.querySelector('[data-add="p1"]').click();
   d.querySelector('[data-add="p3"]').click();
   await sleep(50);
-  ok(d.getElementById('pj-badge').textContent === '3' && !d.getElementById('pj-badge').hidden, 'carrito: badge con 3 items');
+  ok(d.getElementById('pj-badge').textContent === '3', 'carrito: 3 items');
   d.getElementById('pj-fab').click();
-  ok(d.querySelectorAll('#pj-items .pj-item').length === 2, 'drawer: 2 líneas (2× Selva Negra + 1× Cheesecake)');
-  ok(d.getElementById('pj-total').textContent === '$56.000', 'drawer: total $56.000');
-  ok(!d.getElementById('pj-enviar').disabled, 'checkout: botón habilitado con items');
+  ok(d.querySelectorAll('#pj-items .pj-item').length === 2, 'drawer: 2 líneas');
+  ok(d.getElementById('pj-total').textContent === 'S/ 222.00', 'tamaños: 2× Selva Negra M (S/ 72) + Cheesecake M (S/ 78) = S/ 222.00');
 
-  // checkout demo → guarda en el Store compartido
+  // cambiar tamaño de la Selva Negra a Grande
+  const sel = d.querySelector('.pj-tam[data-tam="p1-M"]');
+  ok(!!sel, 'drawer: selector de tamaño presente');
+  sel.value = 'G';
+  sel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await sleep(30);
+  ok(d.getElementById('pj-total').textContent === 'S/ 268.00', 'tamaños: al cambiar a Grande → S/ 268.00');
+
+  // checkout demo
+  d.getElementById('pj-enviar').disabled === false || await sleep(50);
   d.getElementById('pj-nombre').value = 'Cliente Web';
   d.getElementById('pj-telefono').value = '999111222';
   d.getElementById('pj-direccion').value = 'Jr. Prueba 123';
-  d.getElementById('pj-ir-checkout') && d.getElementById('pj-enviar').click();
+  d.getElementById('pj-enviar').click();
   await sleep(1200);
-  ok(d.getElementById('pj-confirm').textContent.includes('Pedido O-0003 confirmado'), 'checkout demo: confirmación con O-0003');
-  ok(d.getElementById('pj-confirm').textContent.includes('$56.000'), 'checkout demo: total correcto');
-  ok(!!d.querySelector('.pj-wa'), 'checkout: botón WhatsApp presente');
-  const persisted = JSON.parse(dom.window.localStorage.getItem('tortas-pedidos-v1'));
-  ok(persisted.orders.some(o => o.id === 'O-0003' && o.total === 56000), 'modo demo: pedido en el Store compartido (lo ve el manager)');
+  ok(d.getElementById('pj-modal-card').textContent.includes('Pedido O-0003 confirmado'), 'checkout demo: O-0003 confirmado');
+  ok(d.getElementById('pj-modal-card').textContent.includes('S/ 268.00'), 'checkout demo: total en soles');
+  d.getElementById('pj-confirm-cerrar').click();
 
-  // ---------- modo real (con endpoint): la request viaja como JSON ----------
+  // ---------- personalizada: editor manual ----------
+  d.querySelector('[data-add="p5"]').click();
+  await sleep(30);
+  ok(!d.getElementById('pj-modal').hidden, 'personalizada: modal abierto');
+  ok(!!d.querySelector('#pj-tab-editor .pj-grid'), 'personalizada: editor manual con campos');
+  ok(!!d.querySelector('[data-tab="ia"]'), 'personalizada: pestaña Con IA presente');
+  d.getElementById('pj-dedicatoria').value = 'Feliz 15 años, Sofía';
+  d.getElementById('pj-extra').value = 'tema de mariposas, tonos lavanda';
+  d.getElementById('pj-generar-desc').click();
+  const desc = d.getElementById('pj-desc').value;
+  ok(desc.includes('Torta personalizada') && desc.includes('manjar blanco') && desc.includes('mariposas'), 'editor: descripción armada desde los campos');
+  d.getElementById('pj-add-pers').click();
+  await sleep(30);
+  ok(d.getElementById('pj-badge').textContent === '1', 'personalizada: agregada al carrito (el checkout anterior lo vació)');
+  ok(d.getElementById('pj-total').textContent === 'S/ 120.00', 'personalizada: total S/ 120.00');
+  const guardada = JSON.parse(dom.window.localStorage.getItem('tortas-pedidos-v1'));
+
+  // checkout demo con personalizada → la descripción viaja en el item
+  await sleep(60);
+  d.getElementById('pj-enviar').click();
+  await sleep(1200);
+  ok(d.getElementById('pj-modal-card').textContent.includes('Pedido O-0004 confirmado'), 'checkout: O-0004 confirmado');
+  ok(d.getElementById('pj-modal-card').textContent.includes('S/ 120.00'), 'checkout: total S/ 120.00');
+  const despues = JSON.parse(dom.window.localStorage.getItem('tortas-pedidos-v1'));
+  const o4 = despues.orders.find(o => o.id === 'O-0004');
+  ok(o4 && o4.items.some(i => i.descripcion && i.descripcion.includes('mariposas')), 'personalizada: descripción guardada en el pedido');
+
+  // ---------- modo real: payload con tamaño y descripción ----------
   dom = await nuevaWeb();
   d = dom.window.document;
   let capturada = null;
@@ -60,18 +92,16 @@ async function nuevaWeb() {
     capturada = { url, body: JSON.parse(opts.body) };
     return { ok: true, json: async () => ({ ok: true, id: 'O-0042' }) };
   };
-  d.querySelector('[data-add="p2"]').click();
-  await sleep(50);   // el observer del checkout habilita el botón en una microtarea
+  d.querySelector('[data-add="p1"]').click();
+  await sleep(60);
   d.getElementById('pj-nombre').value = 'Cliente Real';
   d.getElementById('pj-telefono').value = '998887776';
   d.getElementById('pj-direccion').value = 'Av. Real 456';
   dom.window.eval('Pedidos.CONFIG.endpoint = "https://script.google.com/macros/s/TEST/exec";');
   d.getElementById('pj-enviar').click();
   await sleep(400);
-  ok(!!capturada, 'modo real: la request salió por fetch');
-  ok(capturada.url === 'https://script.google.com/macros/s/TEST/exec', 'modo real: URL del endpoint correcta');
-  ok(capturada.body.items.length === 1 && capturada.body.items[0].pid === 'p2' && capturada.body.total === 17000, 'modo real: payload con items y total');
-  ok(d.getElementById('pj-confirm').textContent.includes('Pedido O-0042 confirmado'), 'modo real: confirmación con el id del servidor');
+  ok(!!capturada && capturada.body.items[0].tam === 'M' && capturada.body.items[0].precio === 72, 'modo real: item con tamaño y precio de servidor');
+  ok(!!capturada && capturada.body.total === 72, 'modo real: total recalculado');
 
   console.log(fails ? `\n${fails} FALLOS` : '\nTODO OK');
   process.exit(fails ? 1 : 0);

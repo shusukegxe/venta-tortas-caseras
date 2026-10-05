@@ -33,10 +33,20 @@ jobs:
           if (!ultimo) { console.log('id='); process.exit(0); }
           if (!ultimo.id || !ultimo.customer || !Array.isArray(ultimo.items) || typeof ultimo.total !== 'number')
             throw new Error('pedido malformado: ' + (ultimo.id || '?'));
-          const CATALOGO = { p1: 18000, p2: 17000, p3: 20000, p4: 16500, p5: 22000 };
+          const CATALOGO = {
+            p1: { P: 52, M: 72, G: 95 }, p2: { P: 48, M: 68, G: 89 },
+            p3: { P: 55, M: 78, G: 102 }, p4: { P: 45, M: 62, G: 82 },
+            p5: { desde: 120 },
+          };
           const recalculado = ultimo.items.reduce((s, it) => {
-            if (!CATALOGO[it.pid]) throw new Error('producto desconocido: ' + it.pid);
-            return s + CATALOGO[it.pid] * it.qty;
+            const p = CATALOGO[it.pid];
+            if (!p) throw new Error('producto desconocido: ' + it.pid);
+            if (p.desde) {
+              if (!it.descripcion) throw new Error('personalizada sin descripción');
+              return s + p.desde * it.qty;
+            }
+            const precio = p[it.tam] || p.M;
+            return s + precio * it.qty;
           }, 0);
           if (recalculado !== ultimo.total) throw new Error('total no coincide: ' + ultimo.total + ' vs ' + recalculado);
           console.log('pedido', ultimo.id, 'OK —', ultimo.customer.name, '— total', ultimo.total);

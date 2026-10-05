@@ -25,12 +25,13 @@ const GITHUB_REPO = 'shusukegxe/venta-tortas-caseras';
 const HOJA_NOMBRE = 'Pedidos';
 
 // misma lista que js/pedidos.js — el total se recalcula aquí, no se confía en el cliente
+// precios realistas de Lima en soles, por tamaño (P/M/G); la personalizada es "desde"
 const CATALOGO = {
-  p1: { nombre: 'Selva Negra', precio: 18000 },
-  p2: { nombre: 'Tres Leches', precio: 17000 },
-  p3: { nombre: 'Cheesecake', precio: 20000 },
-  p4: { nombre: 'Torta de Chantilly', precio: 16500 },
-  p5: { nombre: 'Personalizada', precio: 22000 },
+  p1: { nombre: 'Selva Negra', precios: { P: 52, M: 72, G: 95 } },
+  p2: { nombre: 'Tres Leches', precios: { P: 48, M: 68, G: 89 } },
+  p3: { nombre: 'Cheesecake', precios: { P: 55, M: 78, G: 102 } },
+  p4: { nombre: 'Torta de Chantilly', precios: { P: 45, M: 62, G: 82 } },
+  p5: { nombre: 'Personalizada', desde: 120 },
 };
 
 function json(salida) {
@@ -58,17 +59,30 @@ function doPost(e) {
       const p = CATALOGO[it.pid];
       if (!p) throw new Error('producto desconocido: ' + it.pid);
       const qty = Math.max(1, Math.min(20, Number(it.qty) || 1));
-      return { pid: it.pid, nombre: p.nombre, precio: p.precio, qty };
+      if (p.desde) {
+        // personalizada: descripción obligatoria + imágenes a /uploads
+        if (!it.descripcion || String(it.descripcion).trim().length < 10)
+          throw new Error('la torta personalizada necesita descripción');
+        const item = { pid: it.pid, nombre: p.nombre, precio: p.desde, qty, descripcion: String(it.descripcion).slice(0, 600), images: [] };
+        (Array.isArray(it.images) ? it.images.slice(0, 3) : []).forEach((dataUrl, i) => {
+          const m = new RegExp('^data:image\\/(jpeg|png);base64,(.+)$').exec(String(dataUrl));
+          if (m && idOrden) item.images.push(subirImagen(idOrden, i, m[2]));
+        });
+        return item;
+      }
+      const tam = ['P', 'M', 'G'].includes(it.tam) ? it.tam : 'M';
+      return { pid: it.pid, nombre: p.nombre, tam, precio: p.precios[tam], qty };
     });
     const total = items.reduce((s, it) => s + it.precio * it.qty, 0);
     const c = d.cliente || {};
     if (!c.nombre || !c.telefono || !c.direccion) return json({ ok: false, error: 'faltan datos del cliente' });
 
-    // id correlativo
+    // id correlativo (necesario antes de guardar imágenes en /uploads)
     const props = PropertiesService.getScriptProperties();
     const seq = Number(props.getProperty('seq') || '1');
     props.setProperty('seq', String(seq + 1));
     const id = 'O-' + String(seq).padStart(4, '0');
+    var idOrden = id;
 
     const ahora = new Date();
     const orden = {
@@ -107,6 +121,24 @@ function doPost(e) {
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+// guarda una imagen (base64 jpeg/png) en /uploads del repo y devuelve su ruta pública
+function subirImagen(idOrden, indice, base64) {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) return null;
+  const path = 'uploads/' + idOrden + '-' + (indice + 1) + '.jpg';
+  const api = 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + path;
+  const headers = { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' };
+  let sha = null;
+  const resp = UrlFetchApp.fetch(api, { headers, muteHttpExceptions: true });
+  if (resp.getResponseCode() === 200) sha = JSON.parse(resp.getContentText()).sha;
+  UrlFetchApp.fetch(api, {
+    method: 'put', headers, contentType: 'application/json',
+    payload: JSON.stringify({ message: 'imagen de pedido ' + idOrden + ' [pedidos]', content: base64, sha }),
+    muteHttpExceptions: true,
+  });
+  return path;
 }
 
 // agrega la orden al arreglo de data/pedidos.json (GET → mezclar → PUT)
