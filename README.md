@@ -30,15 +30,26 @@ tortas-manager (panel del negocio, cualquier dispositivo)
   pedido aparece en el panel si lo abres en el mismo navegador.
 - **Con el endpoint configurado**, los pedidos viajan de verdad entre dispositivos.
 
-## Activar pedidos reales (una sola vez, ~5 min)
+## Activar pedidos reales — opción A: sin Apps Script (FormSubmit + bandeja)
+
+1. En `js/pedidos.js` pon `CONFIG.tipo = 'formsubmit'` y `CONFIG.endpoint = 'https://formsubmit.co/ajax/TUCORREO@gmail.com'` → push.
+2. Haz un pedido de prueba: FormSubmit enviará un **correo de activación** a tu Gmail → clic en el enlace (solo una vez).
+3. Google: crea una **contraseña de aplicación** en myaccount.google.com/apppasswords (requiere 2FA activado).
+4. En Gmail web: ⚙️ → Ver toda la configuración → Reenvío y correo POP/IMAP → habilita **IMAP**.
+5. Secrets del repo (`Settings → Secrets and variables → Actions`): `CORREO_USUARIO` = tu Gmail, `CORREO_CLAVE_APP` = la contraseña de aplicación.
+6. Listo: el workflow **bandeja** revisa el buzón cada 5 minutos e integra los pedidos a `data/pedidos.json`; el workflow **pedidos** hace el resto (validación, pedidos.md, Discord opcional, manager y cocina).
+
+Límites: el ID real (O-XXXX) lo asigna la bandeja (el cliente ve su `REF-...`), el retardo es de hasta 5 minutos y las imágenes de referencia no viajan (necesitan escritura al repo; usa la opción B si las quieres).
+
+## Activar pedidos reales — opción B: con Apps Script (instantáneo + imágenes)
 
 1. Sigue los comentarios de `google-apps-script/Code.gs`: pégalo en
    [script.google.com](https://script.google.com), configura `SECRETO`,
    `EMAIL_NEGOCIO`, `GITHUB_REPO` y el `GITHUB_TOKEN` (fine-grained PAT con
    Contents: read/write **solo a este repo**) en Script Properties.
 2. Implementa como aplicación web ("cualquier usuario") y copia la URL.
-3. Pega la URL en `CONFIG.endpoint` dentro de `js/pedidos.js` (y el mismo
-   `SECRETO` en `CONFIG.token`). Push y listo.
+3. En `js/pedidos.js` pon `CONFIG.tipo = 'appsscript'`, pega la URL en
+   `CONFIG.endpoint` (y el mismo `SECRETO` en `CONFIG.token`). Push y listo.
 
 Opcional: notificaciones en vivo extra (Telegram, etc.) agrégalas como paso del
 workflow usando secrets del repo.
@@ -52,7 +63,9 @@ styles.css            estilos (los del sitio + carrito/checkout)
 data/pedidos.json     "base de datos" pública de pedidos (la escribe el mini-API)
 data/pedidos.md       versión legible que publica el workflow
 google-apps-script/   el mini-API de pedidos (pegar en script.google.com)
-.github/workflows/    procesa las requests de tortas
+.github/workflows/    pedidos (valida/anuncia) y bandeja (correo → repo)
+.github/avisar-discord.mjs   el anuncio de Discord del workflow pedidos
+.github/bandeja.py           integra los pedidos que llegan por correo
 ```
 
 ## Notas
