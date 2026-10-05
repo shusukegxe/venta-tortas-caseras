@@ -53,6 +53,12 @@ jobs:
           console.log('id=' + ultimo.id);
           " >> "$GITHUB_OUTPUT"
 
+      - name: Anunciar el pedido en Discord (el workflow hace de bot)
+        env:
+          TORTAS_DISCORD_WEBHOOK: ${{ secrets.TORTAS_DISCORD_WEBHOOK }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .github/avisar-discord.mjs
+
       - name: Publicar versión legible
         run: |
           node -e "
