@@ -1,0 +1,43 @@
+name: bandeja
+
+# Sin Apps Script: el checkout manda el pedido por correo (FormSubmit) y este
+# workflow revisa el buzón cada 5 minutos, extrae los pedidos ([[PEDIDO]]...[[FIN]])
+# y los integra a data/pedidos.json — cuyo push dispara el workflow "pedidos".
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bandeja
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Integrar pedidos del buzón
+        env:
+          CORREO_USUARIO: ${{ secrets.CORREO_USUARIO }}
+          CORREO_CLAVE_APP: ${{ secrets.CORREO_CLAVE_APP }}
+        run: python .github/bandeja.py
+
+      - name: Commit de los pedidos integrados
+        run: |
+          git config user.name "pedidos-bot"
+          git config user.email "actions@github.com"
+          git add data/pedidos.json
+          if ! git diff --cached --quiet; then
+            git commit -m "pedidos desde el correo [bandeja]"
+            git push
+          fi

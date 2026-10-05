@@ -84,7 +84,7 @@ async function nuevaWeb() {
   const o4 = despues.orders.find(o => o.id === 'O-0004');
   ok(o4 && o4.items.some(i => i.descripcion && i.descripcion.includes('mariposas')), 'personalizada: descripción guardada en el pedido');
 
-  // ---------- modo real: payload con tamaño y descripción ----------
+  // ---------- modo real: apps-script (payload completo) ----------
   dom = await nuevaWeb();
   d = dom.window.document;
   let capturada = null;
@@ -97,11 +97,35 @@ async function nuevaWeb() {
   d.getElementById('pj-nombre').value = 'Cliente Real';
   d.getElementById('pj-telefono').value = '998887776';
   d.getElementById('pj-direccion').value = 'Av. Real 456';
-  dom.window.eval('Pedidos.CONFIG.endpoint = "https://script.google.com/macros/s/TEST/exec";');
+  dom.window.eval('Pedidos.CONFIG.tipo = "appsscript"; Pedidos.CONFIG.endpoint = "https://script.google.com/macros/s/TEST/exec";');
   d.getElementById('pj-enviar').click();
   await sleep(400);
-  ok(!!capturada && capturada.body.items[0].tam === 'M' && capturada.body.items[0].precio === 72, 'modo real: item con tamaño y precio de servidor');
-  ok(!!capturada && capturada.body.total === 72, 'modo real: total recalculado');
+  ok(!!capturada && capturada.body.items[0].tam === 'M' && capturada.body.items[0].precio === 72, 'modo apps-script: item con tamaño y precio de servidor');
+  ok(!!capturada && capturada.body.total === 72, 'modo apps-script: total recalculado');
+
+  // ---------- modo real sin Apps Script: formsubmit (correo con marcador) ----------
+  dom = await nuevaWeb();
+  d = dom.window.document;
+  capturada = null;
+  dom.window.fetch = async (url, opts) => {
+    capturada = { url, body: JSON.parse(opts.body) };
+    return { ok: true, json: async () => ({ success: 'true' }) };
+  };
+  d.querySelector('[data-add="p1"]').click();
+  await sleep(60);
+  d.getElementById('pj-nombre').value = 'Cliente Correo';
+  d.getElementById('pj-telefono').value = '911222333';
+  d.getElementById('pj-direccion').value = 'Av. Correo 789';
+  dom.window.eval('Pedidos.CONFIG.tipo = "formsubmit"; Pedidos.CONFIG.endpoint = "https://formsubmit.co/ajax/test@mail.com";');
+  d.getElementById('pj-enviar').click();
+  await sleep(400);
+  ok(!!capturada && capturada.url === 'https://formsubmit.co/ajax/test@mail.com', 'formsubmit: POST al endpoint ajax');
+  ok(capturada.body._subject.startsWith('Pedido web tortas — REF-'), 'formsubmit: asunto con ref para la bandeja');
+  ok(capturada.body.pedido.includes('[[PEDIDO]]') && capturada.body.pedido.includes('[[FIN]]'), 'formsubmit: pedido entre marcadores');
+  const canonico = JSON.parse(capturada.body.pedido.replace('[[PEDIDO]]', '').replace('[[FIN]]', ''));
+  ok(canonico.items[0].pid === 'p1' && canonico.items[0].precio === 72 && canonico.total === 72, 'formsubmit: canonical con tamaño y total');
+  ok(!!canonico.createdAt, 'formsubmit: createdAt para el orden en la bandeja');
+  ok(d.getElementById('pj-modal-card').textContent.includes('Pedido REF-'), 'formsubmit: confirmación con la ref');
 
   console.log(fails ? `\n${fails} FALLOS` : '\nTODO OK');
   process.exit(fails ? 1 : 0);

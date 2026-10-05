@@ -12,7 +12,8 @@
 
 const Pedidos = (() => {
   const CONFIG = {
-    endpoint: '',            // URL de tu Apps Script (ver README)
+    tipo: '',                // 'formsubmit' (sin Apps Script) | 'appsscript' | '' = demo
+    endpoint: '',            // formsubmit: https://formsubmit.co/ajax/TUCORREO · appsscript: URL /exec
     token: 'cambia-este-token',
     whatsapp: '',            // ej: '51987654321'
   };
@@ -228,10 +229,11 @@ const Pedidos = (() => {
         <button class="pj-cta pj-sec" id="pj-chat-usar" disabled>Usar esta descripción</button>
         <p class="pj-dim">La IA corre con Puter.js: la primera vez te pedirá iniciar sesión gratis con tu cuenta Puter.</p>
       </div>
+      ${CONFIG.tipo === 'appsscript' ? `
       <label class="pj-archivos">Imágenes de referencia (hasta 3)
         <input type="file" id="pj-imgs" accept="image/*" multiple>
         <div class="pj-thumbs" id="pj-thumbs"></div>
-      </label>
+      </label>` : ''}
       <button class="pj-cta" id="pj-add-pers">Agregar al pedido</button>`);
 
     $('#pj-modal-card').querySelectorAll('.pj-tab').forEach(b => b.addEventListener('click', () => {
@@ -283,7 +285,8 @@ const Pedidos = (() => {
       $('#pj-modal-card').querySelector('[data-tab="editor"]').click();
     });
 
-    $('#pj-imgs').addEventListener('change', async e => {
+    const pjImgs = $('#pj-imgs');
+    if (pjImgs) pjImgs.addEventListener('change', async e => {
       const archivos = [...e.target.files].slice(0, 3 - personal.imgs.length);
       for (const archivo of archivos) {
         try {
@@ -367,7 +370,36 @@ const Pedidos = (() => {
       };
       try {
         let id;
-        if (CONFIG.endpoint) {
+        if (CONFIG.tipo === 'formsubmit') {
+          // sin Apps Script: el pedido viaja como correo (FormSubmit) y el
+          // workflow "bandeja" lo integra a data/pedidos.json por IMAP
+          const ref = 'REF-' + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          const plano = {
+            _subject: `Pedido web tortas — ${ref}`,
+            _template: 'table',
+            _captcha: 'false',
+            ref,
+            nombre, telefono, direccion,
+            fecha: payload.cliente.fecha,
+            pago: payload.pago,
+            total: money(payload.total),
+            pedido: '[[PEDIDO]]' + JSON.stringify({
+              ref,
+              cliente: payload.cliente,
+              items: payload.items.map(it => ({ ...it, images: undefined })),
+              total: payload.total,
+              createdAt: Date.now(),
+            }) + '[[FIN]]',
+          };
+          const res = await fetch(CONFIG.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(plano),
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!out.success) throw new Error(out.message || 'no se pudo registrar');
+          id = ref;
+        } else if (CONFIG.endpoint) {
           const res = await fetch(CONFIG.endpoint, { method: 'POST', body: JSON.stringify(payload) });
           const out = await res.json();
           if (!out.ok) throw new Error(out.error || 'error del servidor');
@@ -397,7 +429,7 @@ const Pedidos = (() => {
           <div class="pj-confirm-ic">${svg.check}</div>
           <h3 class="pj-modal-titulo">Pedido ${id} confirmado</h3>
           <p>Total: <b>${money(payload.total)}</b> · ${payload.pago}</p>
-          <p class="pj-dim">Te escribimos para coordinar la entrega.${CONFIG.endpoint ? '' : ' (modo demo)'}</p>
+          <p class="pj-dim">Te escribimos para coordinar la entrega.${CONFIG.endpoint || CONFIG.tipo ? '' : ' (modo demo)'}</p>
           <a class="pj-wa" target="_blank" rel="noopener" href="https://wa.me/${CONFIG.whatsapp}?text=${waTxt}">Enviar por WhatsApp</a>
           <button class="pj-cerrar-btn" id="pj-confirm-cerrar">Cerrar</button>`;
         $('#pj-modal').hidden = false;
