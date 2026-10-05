@@ -1,0 +1,65 @@
+name: pedidos
+
+# Procesa las requests de tortas: cada vez que el mini-API (Apps Script) agrega
+# un pedido a data/pedidos.json, este workflow valida el JSON, recalcula los
+# totales contra el catálogo y publica una versión legible del pedido.
+
+on:
+  push:
+    paths:
+      - 'data/pedidos.json'
+
+permissions:
+  contents: write
+
+jobs:
+  procesar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validar el pedido entrante
+        id: valida
+        run: |
+          node -e "
+          const fs = require('fs');
+          const pedidos = JSON.parse(fs.readFileSync('data/pedidos.json', 'utf8'));
+          if (!Array.isArray(pedidos)) throw new Error('pedidos.json no es un arreglo');
+          const ultimo = pedidos[0];
+          if (!ultimo) { console.log('id='); process.exit(0); }
+          if (!ultimo.id || !ultimo.customer || !Array.isArray(ultimo.items) || typeof ultimo.total !== 'number')
+            throw new Error('pedido malformado: ' + (ultimo.id || '?'));
+          const CATALOGO = { p1: 18000, p2: 17000, p3: 20000, p4: 16500, p5: 22000 };
+          const recalculado = ultimo.items.reduce((s, it) => {
+            if (!CATALOGO[it.pid]) throw new Error('producto desconocido: ' + it.pid);
+            return s + CATALOGO[it.pid] * it.qty;
+          }, 0);
+          if (recalculado !== ultimo.total) throw new Error('total no coincide: ' + ultimo.total + ' vs ' + recalculado);
+          console.log('pedido', ultimo.id, 'OK —', ultimo.customer.name, '— total', ultimo.total);
+          console.log('id=' + ultimo.id);
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Publicar versión legible
+        run: |
+          node -e "
+          const fs = require('fs');
+          const pedidos = JSON.parse(fs.readFileSync('data/pedidos.json', 'utf8'));
+          const lineas = pedidos.map(p =>
+            ['## ' + p.id + ' — ' + p.customer.name,
+             '- Estado: ' + p.status + ' · Pago: ' + p.payStatus + ' (' + p.payMethod + ')',
+             '- Entrega: ' + (p.deliveryDate || 'por coordinar'),
+             '- Artículos: ' + p.items.map(i => i.qty + '× ' + i.name).join(', '),
+             '- Total: ' + p.total, ''].join('\n'));
+          fs.writeFileSync('data/pedidos.md', '# Pedidos\n\n' + lineas.join('\n') + '\n');
+          "
+          git config user.name "pedidos-bot"
+          git config user.email "actions@github.com"
+          git add data/pedidos.md
+          if ! git diff --cached --quiet; then
+            git commit -m "pedido procesado: ${{ steps.valida.outputs.id }} [skip ci]"
+            git push
+          fi
