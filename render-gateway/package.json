@@ -1,0 +1,16 @@
+{
+  "name": "tortas-puerta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Puerta de pedidos de Tortas · Hechas a Mano — commitea los pedidos a data/pedidos.json vía la API de GitHub",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

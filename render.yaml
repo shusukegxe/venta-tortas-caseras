@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: tortas-puerta
+    runtime: node
+    rootDir: render-gateway
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: TOKEN_SECRETO
+        sync: false          # la misma palabra que CONFIG.token en js/pedidos.js
+      - key: GITHUB_TOKEN
+        sync: false          # fine-grained PAT: solo este repo, Contents Read & write

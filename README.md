@@ -30,6 +30,21 @@ tortas-manager (panel del negocio, cualquier dispositivo)
   pedido aparece en el panel si lo abres en el mismo navegador.
 - **Con el endpoint configurado**, los pedidos viajan de verdad entre dispositivos.
 
+## Activar pedidos reales — opción C: servidor propio en Render (gratis)
+
+La versión clásica: un servidor Express tuyo corriendo en el free tier de Render
+(misma lógica y contrato que el Worker). Se duerme tras 15 min sin tráfico y
+despierta solo (~30 s el primer pedido tras la siesta).
+
+1. Crea el token fino (solo `venta-tortas-caseras`, Contents: Read & write).
+2. [dashboard.render.com](https://dashboard.render.com) → New + → **Blueprint** → elige este repo
+   (lee el `render.yaml` de la raíz) → rellena `TOKEN_SECRETO` y `GITHUB_TOKEN` → Create.
+3. Copia la URL `https://tortas-puerta.onrender.com` → en `js/pedidos.js`:
+   `CONFIG.tipo = 'appsscript'` y `CONFIG.endpoint = 'https://tortas-puerta.onrender.com/pedidos'` → push.
+
+Truco para que nunca duerma: un monitor gratis de [UptimeRobot](https://uptimerobot.com)
+punteando la URL cada 5 minutos.
+
 ## Activar pedidos reales — opción 0: Cloudflare Worker (GitHub puro, instantáneo)
 
 La más "GitHub": el Worker (gratis, 5 min) es la única pieza con credenciales —
@@ -79,6 +94,8 @@ data/pedidos.md       versión legible que publica el workflow
 google-apps-script/   el mini-API de pedidos (pegar en script.google.com)
 .github/workflows/    pedidos (valida/anuncia) y bandeja (correo → repo)
 cloudflare-worker/   puerta de pedidos vía API de GitHub (opción 0)
+render-gateway/      puerta de pedidos como servidor Express (opción C)
+render.yaml          blueprint de despliegue de la opción C
 .github/avisar-discord.mjs   el anuncio de Discord del workflow pedidos
 .github/bandeja.py           integra los pedidos que llegan por correo
 ```
