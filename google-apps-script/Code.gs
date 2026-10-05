@@ -105,13 +105,28 @@ function doPost(e) {
       total, orden.payMethod, c.mensaje || '', 'nuevo',
     ]);
 
-    // 2) email inmediato al negocio
+    // 2) email inmediato al negocio (html bonito + texto plano de respaldo)
+    const filas = items.map(it =>
+      `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee">${it.qty}× ${it.nombre}${it.tam ? ' (' + it.tam + ')' : ''}` +
+      (it.descripcion ? `<br><span style="color:#7a5c45;font-size:12px">${it.descripcion}</span>` : '') +
+      (it.images && it.images.length ? `<br><span style="color:#7a5c45;font-size:12px">imágenes: ${it.images.map(r => 'https://raw.githubusercontent.com/' + GITHUB_REPO + '/main/' + r).join(' · ')}</span>` : '') +
+      `</td><td align="right" style="padding:7px 10px;border-bottom:1px solid #eee">S/ ${(it.precio * it.qty).toFixed(2)}</td></tr>`).join('');
+    const htmlBody = `
+      <div style="font-family:Arial,sans-serif;max-width:540px;color:#4a3728">
+        <h2 style="margin:0 0 4px">Pedido ${id}</h2>
+        <p style="margin:0 0 14px;color:#7a5c45">Tortas · Hechas a Mano — ${ahora.toLocaleString('es')}</p>
+        <p><b>${c.nombre}</b> · ${c.telefono}<br>${c.direccion}<br>Entrega: <b>${c.fecha || 'por coordinar'}</b></p>
+        <table style="border-collapse:collapse;width:100%">${filas}</table>
+        <p style="font-size:16px"><b>Total: S/ ${total.toFixed(2)}</b> · ${orden.payMethod}</p>
+        ${c.mensaje ? `<p style="background:#fff8ee;border:1px solid #e8d5b7;border-radius:8px;padding:10px">Mensaje en la torta: "${c.mensaje}"</p>` : ''}
+      </div>`;
     MailApp.sendEmail(
       EMAIL_NEGOCIO,
-      `Pedido ${id} — ${c.nombre} (${total})`,
+      `Pedido ${id} — ${c.nombre} (S/ ${total.toFixed(2)})`,
       `Pedido ${id}\nCliente: ${c.nombre} — ${c.telefono}\nDirección: ${c.direccion}\nEntrega: ${c.fecha || 'lo antes posible'}\n\n` +
-      items.map(it => `${it.qty}× ${it.nombre} — ${it.precio * it.qty}`).join('\n') +
-      `\n\nTotal: ${total} (${orden.payMethod})\nMensaje: ${c.mensaje || '—'}`
+      items.map(it => `${it.qty}× ${it.nombre}${it.tam ? ' (' + it.tam + ')' : ''} — ${it.precio * it.qty}`).join('\n') +
+      `\n\nTotal: S/ ${total.toFixed(2)} (${orden.payMethod})\nMensaje: ${c.mensaje || '—'}`,
+      { htmlBody }
     );
 
     // 3) commit de data/pedidos.json → dispara el workflow de GitHub
