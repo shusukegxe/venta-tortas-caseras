@@ -30,6 +30,20 @@ tortas-manager (panel del negocio, cualquier dispositivo)
   pedido aparece en el panel si lo abres en el mismo navegador.
 - **Con el endpoint configurado**, los pedidos viajan de verdad entre dispositivos.
 
+## Activar pedidos reales — opción 0: Cloudflare Worker (GitHub puro, instantáneo)
+
+La más "GitHub": el Worker (gratis, 5 min) es la única pieza con credenciales —
+recibe el POST del checkout, valida contra el catálogo y hace **commit directo**
+a `data/pedidos.json` y `/uploads` vía la API de GitHub. Sin Google, sin correo,
+sin retardo; el repo sigue siendo la única base de datos.
+
+1. Crea el token fino (solo `venta-tortas-caseras`, Contents: Read & write).
+2. [dash.cloudflare.com](https://dash.cloudflare.com) → Workers & Pages → Create Worker → pega `cloudflare-worker/worker.js`.
+3. Settings → Variables and Secrets: `GITHUB_TOKEN` (el token) y `TOKEN_SECRETO`
+   (la misma palabra que `CONFIG.token` en `js/pedidos.js`).
+4. Deploy → copia la URL `*.workers.dev` → en `js/pedidos.js`:
+   `CONFIG.tipo = 'appsscript'` y `CONFIG.endpoint = 'https://...workers.dev'` → push.
+
 ## Activar pedidos reales — opción A: sin Apps Script (FormSubmit + bandeja)
 
 1. En `js/pedidos.js` pon `CONFIG.tipo = 'formsubmit'` y `CONFIG.endpoint = 'https://formsubmit.co/ajax/TUCORREO@gmail.com'` → push.
@@ -64,6 +78,7 @@ data/pedidos.json     "base de datos" pública de pedidos (la escribe el mini-AP
 data/pedidos.md       versión legible que publica el workflow
 google-apps-script/   el mini-API de pedidos (pegar en script.google.com)
 .github/workflows/    pedidos (valida/anuncia) y bandeja (correo → repo)
+cloudflare-worker/   puerta de pedidos vía API de GitHub (opción 0)
 .github/avisar-discord.mjs   el anuncio de Discord del workflow pedidos
 .github/bandeja.py           integra los pedidos que llegan por correo
 ```
